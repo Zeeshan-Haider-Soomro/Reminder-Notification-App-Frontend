@@ -1,7 +1,8 @@
+import 'react-native-get-random-values';
+import { v4 as uuidv4 } from 'uuid';
 import { store } from "../store";
 import { addReminder, updateReminder, removeReminder } from "../store/remindersSlice";
 import { Reminder } from "../types";
-import { v4 as uuidv4 } from "uuid";
 
 class ReminderStore {
   add(reminderData: Omit<Reminder, "id" | "notificationId">): Reminder {
