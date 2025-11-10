@@ -29,6 +29,7 @@ export default function RemindersListScreen() {
       <FlatList
         data={reminders}
         keyExtractor={(item) => item.id}
+        extraData={reminders.length}
         renderItem={({ item }) => (
           <View style={styles.card}>
             <View style={{ flex: 1 }}>

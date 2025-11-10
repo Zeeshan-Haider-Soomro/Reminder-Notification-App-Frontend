@@ -10,7 +10,14 @@ const remindersSlice = createSlice({
   initialState,
   reducers: {
     addReminder(state, action: PayloadAction<Reminder>) {
-      state.list.push(action.payload);
+      // Duplicate check - agar same id ka reminder already hai to add nahi karo
+      const exists = state.list.find(r => r.id === action.payload.id);
+      if (!exists) {
+        state.list.push(action.payload);
+      } else {
+        // Agar already hai to update karo
+        state.list = state.list.map(r => r.id === action.payload.id ? action.payload : r);
+      }
     },
     updateReminder(state, action: PayloadAction<Reminder>) {
       state.list = state.list.map(r => r.id === action.payload.id ? action.payload : r);

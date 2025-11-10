@@ -8,7 +8,16 @@ class ReminderStore {
   add(reminderData: Omit<Reminder, "id" | "notificationId">): Reminder {
     const id = uuidv4();
     const reminder: Reminder = { id, ...reminderData };
-    store.dispatch(addReminder(reminder));
+    
+    // Check if reminder with same id already exists (shouldn't happen, but safety check)
+    const existing = store.getState().reminders.list.find(r => r.id === id);
+    if (!existing) {
+      store.dispatch(addReminder(reminder));
+    } else {
+      // If exists, update it
+      store.dispatch(updateReminder(reminder));
+    }
+    
     return reminder;
   }
 

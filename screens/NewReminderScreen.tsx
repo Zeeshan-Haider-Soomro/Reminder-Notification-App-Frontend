@@ -1,15 +1,18 @@
 import React, { useState } from "react";
 import { TextInput, TouchableOpacity, Text, Alert, StyleSheet, KeyboardAvoidingView, Platform, ScrollView } from "react-native";
 import { parseReminderText } from "../api/geminiApi";
+import { createReminder } from "../api/reminderApi";
 import ReminderStore from "../services/ReminderStore";
 import ReminderScheduler from "../services/ReminderScheduler";
-import { useDispatch } from "react-redux";
-import { updateReminder } from "../store/remindersSlice";
+import FCMService from "../services/FCMService";
+import { store } from "../store";
+import { addReminder } from "../store/remindersSlice";
+import { Reminder } from "../types";
 
 export default function NewReminderScreen() {
   const [message, setMessage] = useState("");
   const [loading, setLoading] = useState(false);
-  const dispatch = useDispatch();
+  // const dispatch = useDispatch(); // ❌ REMOVED - not needed
 
  const handleCreate = async () => {
   if (!message.trim()) {
@@ -23,25 +26,66 @@ export default function NewReminderScreen() {
 
   try {
     setLoading(true);
+    
+    // Step 1: Parse reminder using Gemini
     const res = await parseReminderText(message);
     if (!res.success) throw new Error(res.error || "Parse failed");
 
-    const reminder = ReminderStore.add(res.reminder);
-    await ReminderScheduler.requestPermissions();
-    const notificationId = (await ReminderScheduler.schedule(reminder)) ?? undefined;
-
-    const updated = { ...reminder, notificationId };
-    ReminderStore.update(updated);
-    dispatch(updateReminder(updated));
-
     if (Platform.OS === "web") {
-      window.alert("Reminder scheduled");
+      // Web: Local scheduling use karo
+      // ReminderStore.add() already Redux store me add kar deta hai, duplicate dispatch nahi karna
+      const reminder = ReminderStore.add({
+        name: res.reminder.name,
+        task: res.reminder.task,
+        notify_at: res.reminder.notify_at,
+      });
+      
+      // Web me local notification schedule karo
+      await ReminderScheduler.requestPermissions();
+      const notificationId = await ReminderScheduler.schedule(reminder);
+      if (notificationId) {
+        reminder.notificationId = notificationId;
+        ReminderStore.update(reminder);
+      }
+      
+      // dispatch(addReminder(reminder)); // ❌ REMOVED - ReminderStore.add() already adds to Redux
+      window.alert("Reminder scheduled (local notification)");
     } else {
-      Alert.alert("Reminder scheduled");
+      // Mobile: Backend se push notifications
+      const fcmToken = FCMService.getToken();
+      if (!fcmToken) {
+        throw new Error("Push token not available. Please wait a moment and try again.");
+      }
+
+      // Backend me reminder create karo
+      const reminderData = {
+        name: res.reminder.name,
+        task: res.reminder.task,
+        notify_at: res.reminder.notify_at,
+        fcmToken: fcmToken,
+      };
+
+      const createRes = await createReminder(reminderData);
+      if (!createRes.success) throw new Error(createRes.error || "Failed to create reminder");
+
+      // Backend se id use karo (backend se unique id aayegi)
+      // Direct Redux me add karo (duplicate check slice me ho jayega)
+      const reminder: Reminder = {
+        id: createRes.reminder.id, // Backend se id use karo
+        name: createRes.reminder.name,
+        task: createRes.reminder.task,
+        notify_at: createRes.reminder.notify_at,
+      };
+      
+      // Direct add karo (duplicate check slice me ho jayega)
+      store.dispatch(addReminder(reminder));
+      
+      Alert.alert("Reminder scheduled", "You will receive a push notification");
     }
 
     setMessage("");
   } catch (err: any) {
+    console.error("Error creating reminder:", err);
     if (Platform.OS === "web") {
       window.alert(err.message || "Something went wrong");
     } else {
