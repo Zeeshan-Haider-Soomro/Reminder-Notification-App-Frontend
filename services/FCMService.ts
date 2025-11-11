@@ -2,8 +2,9 @@ import { Platform } from "react-native";
 import * as Notifications from "expo-notifications";
 import axios from "axios";
 import Constants from "expo-constants";
+import AudioService from "./AudioService";
 
-const API_BASE = "http://192.168.1.108:4000"; // ✅ Your backend URL
+const API_BASE = "http://192.168.90.188:4000"; // ✅ Your backend URL
 
 class FCMService {
   private fcmToken: string | null = null;
@@ -95,13 +96,29 @@ class FCMService {
       });
 
       // Notification received listener (foreground)
-      Notifications.addNotificationReceivedListener((notification) => {
+      Notifications.addNotificationReceivedListener(async (notification) => {
         console.log("📨 Notification received:", notification);
+        try {
+          const audioUrl = (notification.request.content.data as any)?.audioUrl;
+          if (audioUrl) {
+            await AudioService.playFromUrl(audioUrl);
+          }
+        } catch (e) {
+          console.warn("Audio play on receive failed:", e);
+        }
       });
 
       // Notification tapped listener
-      Notifications.addNotificationResponseReceivedListener((response) => {
+      Notifications.addNotificationResponseReceivedListener(async (response) => {
         console.log("👆 Notification tapped:", response);
+        try {
+          const audioUrl = (response.notification.request.content.data as any)?.audioUrl;
+          if (audioUrl) {
+            await AudioService.playFromUrl(audioUrl);
+          }
+        } catch (e) {
+          console.warn("Audio play on tap failed:", e);
+        }
       });
     }
   }

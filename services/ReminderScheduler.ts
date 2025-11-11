@@ -25,7 +25,7 @@ if (Platform.OS === "android") {
 }
 
 // 2️⃣ Browser fallback function (Web Custom Sound)
-function notifyWeb(title: string, body: string) {
+function notifyWeb(title: string, body: string, audioUrl?: string) {
   if (!("Notification" in window)) {
     alert(`${title}\n${body}`);
     return;
@@ -33,14 +33,21 @@ function notifyWeb(title: string, body: string) {
 
   Notification.requestPermission().then((permission) => {
     if (permission === "granted") {
-      new Notification(title, { body, silent: true });
+      const n = new Notification(title, { body, silent: true });
 
-      // 👇 Play custom recorded voice (must exist in public/sounds/)
-      const audio = new Audio("/sounds/reminder_sound.mp3");
+      // Play provided audioUrl if any, otherwise fallback
+      const src = audioUrl || "/sounds/reminder_sound.mp3";
+      const audio = new Audio(src);
       audio
         .play()
         .then(() => console.log("Custom sound played successfully 🎵"))
-        .catch((err) => console.warn("Audio play failed:", err));
+        .catch((err) => {
+          console.warn("Audio autoplay blocked, will play on click:", err);
+          // Fallback: play on notification click (user gesture)
+          n.onclick = () => {
+            audio.play().catch((e) => console.warn("Audio play failed on click:", e));
+          };
+        });
     }
   });
 }
@@ -72,7 +79,7 @@ class ReminderScheduler {
       const delay = date.getTime() - now.getTime();
 
       setTimeout(() => {
-        notifyWeb(`Reminder — ${reminder.name}`, reminder.task);
+        notifyWeb(`Reminder — ${reminder.name}`, reminder.task, reminder.audioUrl);
       }, delay > 0 ? delay : 0);
 
       return null; // web has no notification ID

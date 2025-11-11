@@ -1,17 +1,21 @@
 import React, { useState } from "react";
 import { TextInput, TouchableOpacity, Text, Alert, StyleSheet, KeyboardAvoidingView, Platform, ScrollView } from "react-native";
 import { parseReminderText } from "../api/geminiApi";
-import { createReminder } from "../api/reminderApi";
+import { createReminder, uploadAudio } from "../api/reminderApi";
 import ReminderStore from "../services/ReminderStore";
 import ReminderScheduler from "../services/ReminderScheduler";
 import FCMService from "../services/FCMService";
 import { store } from "../store";
 import { addReminder } from "../store/remindersSlice";
 import { Reminder } from "../types";
+import AudioService from "../services/AudioService";
 
 export default function NewReminderScreen() {
   const [message, setMessage] = useState("");
   const [loading, setLoading] = useState(false);
+  const [recording, setRecording] = useState(false);
+  const [selectedAudioFile, setSelectedAudioFile] = useState<any | null>(null);
+  const [selectedAudioName, setSelectedAudioName] = useState<string | null>(null);
   // const dispatch = useDispatch(); // ❌ REMOVED - not needed
 
  const handleCreate = async () => {
@@ -31,6 +35,14 @@ export default function NewReminderScreen() {
     const res = await parseReminderText(message);
     if (!res.success) throw new Error(res.error || "Parse failed");
 
+    // Optional: upload audio if provided
+    let audioUrl: string | undefined = undefined;
+    if (selectedAudioFile) {
+      const up = await uploadAudio(selectedAudioFile);
+      if (!up.success || !up.url) throw new Error("Audio upload failed");
+      audioUrl = up.url;
+    }
+
     if (Platform.OS === "web") {
       // Web: Local scheduling use karo
       // ReminderStore.add() already Redux store me add kar deta hai, duplicate dispatch nahi karna
@@ -38,6 +50,7 @@ export default function NewReminderScreen() {
         name: res.reminder.name,
         task: res.reminder.task,
         notify_at: res.reminder.notify_at,
+        audioUrl,
       });
       
       // Web me local notification schedule karo
@@ -63,6 +76,7 @@ export default function NewReminderScreen() {
         task: res.reminder.task,
         notify_at: res.reminder.notify_at,
         fcmToken: fcmToken,
+        audioUrl,
       };
 
       const createRes = await createReminder(reminderData);
@@ -75,6 +89,7 @@ export default function NewReminderScreen() {
         name: createRes.reminder.name,
         task: createRes.reminder.task,
         notify_at: createRes.reminder.notify_at,
+        audioUrl: createRes.reminder.audioUrl,
       };
       
       // Direct add karo (duplicate check slice me ho jayega)
@@ -84,6 +99,8 @@ export default function NewReminderScreen() {
     }
 
     setMessage("");
+    setSelectedAudioFile(null);
+    setSelectedAudioName(null);
   } catch (err: any) {
     console.error("Error creating reminder:", err);
     if (Platform.OS === "web") {
@@ -113,6 +130,53 @@ export default function NewReminderScreen() {
   returnKeyType="done" // optional: changes the keyboard's Enter button text
   onSubmitEditing={handleCreate} // trigger your submit function
 />
+
+        {Platform.OS === "web" ? (
+          <>
+            <input
+              type="file"
+              accept="audio/*"
+              onChange={(e) => {
+                const file = e.target.files?.[0] || null;
+                if (file) {
+                  setSelectedAudioFile(file);
+                  setSelectedAudioName(file.name);
+                } else {
+                  setSelectedAudioFile(null);
+                  setSelectedAudioName(null);
+                }
+              }}
+              style={{ marginBottom: 12 }}
+            />
+            {selectedAudioName ? <Text>Selected: {selectedAudioName}</Text> : null}
+          </>
+        ) : (
+          <>
+            <TouchableOpacity
+              style={[styles.button, { backgroundColor: recording ? "#e74c3c" : "#27ae60", marginBottom: 12 }]}
+              onPress={async () => {
+                try {
+                  if (!recording) {
+                    await AudioService.startRecording();
+                    setRecording(true);
+                  } else {
+                    const result = await AudioService.stopRecording();
+                    setRecording(false);
+                    setSelectedAudioFile(result.file);
+                    setSelectedAudioName("recording.m4a");
+                    Alert.alert("Recorded", "Voice recorded successfully");
+                  }
+                } catch (e: any) {
+                  Alert.alert("Audio", e.message || "Audio error");
+                  setRecording(false);
+                }
+              }}
+            >
+              <Text style={styles.buttonText}>{recording ? "Stop Recording" : "Record Voice"}</Text>
+            </TouchableOpacity>
+            {selectedAudioName ? <Text style={{ marginBottom: 8 }}>Selected: {selectedAudioName}</Text> : null}
+          </>
+        )}
 
         <TouchableOpacity
           style={[styles.button, loading && styles.buttonDisabled]}
